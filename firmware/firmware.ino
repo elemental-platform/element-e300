@@ -1,7 +1,7 @@
-// Element E300 v1.0.4 firmware
+// Element E300 v1.1 firmware
 
 // Developed by AKstudios
-// Updated: 07/10/2019
+// Updated: 12/22/2019
 
 #include <RFM69.h>  //  https://github.com/LowPowerLab/RFM69
 #include <SPI.h>
@@ -12,8 +12,7 @@
 #include <avr/wdt.h>
 
 // define node parameters
-//#define NODEID              23
-uint16_t NODEID =             23; // same as above, but supports 10bit addresses (up to 1023 node IDs)
+#define NODEID              23  // must be unique for each node on same network (supports 10bit addresses (up to 1023 node IDs))
 #define NETWORKID           20
 #define ROOM_GATEWAYID      20
 #define GATEWAYID           1
@@ -107,16 +106,17 @@ void loop()
     readSensors();
     
     Serial.println(dataPacket);
-    delay(10);
+    delay(5);
     
     radio.sendWithRetry(ROOM_GATEWAYID, dataPacket, strlen(dataPacket));  // send data
+    sleep();   // sleep 8 seconds before sending data to main gateway
+    radio.setNetwork(GATEWAY_NETWORKID);
+    radio.sendWithRetry(GATEWAYID, dataPacket, strlen(dataPacket));
+    radio.setNetwork(NETWORKID);
 
     dataPacket[0] = (char)0; // clearing first byte of char array clears the array
   
-    digitalWrite(LED, HIGH);
-    delay(5);
-    digitalWrite(LED, LOW);
-    //fadeLED();
+    blinkLED(LED);
 
     wake_interval = 0;    // reset wake interval to 0
   }
@@ -156,25 +156,31 @@ void readSensors()
   unsigned long val = high*256 + low; //Combine high byte and low byte with this formula to get value
   
   // define character arrays for all variables
-  char _i[3];
   char _c[7];
   
   // convert all flaoting point and integer variables into character arrays
-  dtostrf(NODEID, 1, 0, _i);
   dtostrf(val, 1, 0, _c); 
-  delay(10);
+  delay(1);
   
   dataPacket[0] = 0;  // first value of dataPacket should be a 0
   
   // create datapacket by combining all character arrays into a large character array
-  strcat(dataPacket, "i:");
-  strcat(dataPacket, _i);
-  strcat(dataPacket, ",c:");
+  strcat(dataPacket, "c:");
   strcat(dataPacket, _c);
-  delay(10);
+  delay(1);
 }
 
 
+
+// blink LED *****************************************
+void blinkLED(int pin)
+{
+  digitalWrite(pin, HIGH);
+  delay(5);
+  digitalWrite(pin, LOW);
+}
+
+// fade LED **********************************************************************
 void fadeLED()
 {
   int brightness = 0;
