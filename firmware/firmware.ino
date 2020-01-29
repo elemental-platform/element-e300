@@ -1,7 +1,11 @@
-// Element E300 v1.1 firmware
+//*****************************************************************************************************************************
+// Element E300 v1.2 firmware
 
 // Developed by AKstudios
-// Updated: 12/22/2019
+// Updated: 01/29/2020
+
+//*****************************************************************************************************************************
+// libraries in use
 
 #include <RFM69.h>  //  https://github.com/LowPowerLab/RFM69
 #include <SPI.h>
@@ -11,58 +15,64 @@
 #include <avr/sleep.h>
 #include <avr/wdt.h>
 
-// define node parameters
+//*****************************************************************************************************************************
+// configurable global variables - define node parameters
+
 #define NODEID              23  // must be unique for each node on same network (supports 10bit addresses (up to 1023 node IDs))
 #define NETWORKID           20
 #define ROOM_GATEWAYID      20
 #define GATEWAYID           1
 #define GATEWAY_NETWORKID   1
-#define FREQUENCY     RF69_915MHZ //Match this with the version of your Moteino! (others: RF69_433MHZ, RF69_868MHZ)
-#define ENCRYPTKEY    "Tt-Mh=SQ#dn#JY3_" //has to be same 16 characters/bytes on all nodes, not more not less!
-#define IS_RFM69HW    //uncomment only for RFM69HW! Leave out if you have RFM69W!
-#define LED           9 // led pin
-#define POWER         4
+#define FREQUENCY           RF69_915MHZ //Match this with the version of your Moteino! (others: RF69_433MHZ, RF69_868MHZ)
+#define ENCRYPTKEY          "RgUjXn2r5u8x/A?D" //has to be same 16 characters/bytes on all nodes, not more not less!
+#define FREQUENCY_EXACT     905000000   // change the frequency in areas of interference (default: 915MHz)
+#define IS_RFM69HW          //uncomment only for RFM69HW! Leave out if you have RFM69W!
+#define LED                 9 // led pin
+#define POWER               4
 
-// define objects
+// other global objects and variables
 RFM69 radio;
-
-// define S8 global variables
 SoftwareSerial mySerial(6, 5); // RX, TX
 byte readCO2[] = {0xFE, 0X44, 0X00, 0X08, 0X02, 0X9F, 0X25};
 byte response[] = {0,0,0,0,0,0,0}; //create an array to store the response
-
 char dataPacket[150];
 int wake_interval = 0;
 
-ISR(WDT_vect)  // Interrupt Service Routine for WatchDog Timer
+//*****************************************************************************************************************************
+// Interrupt Service Routine for WatchDog Timer
+
+ISR(WDT_vect) 
 {
   wdt_disable();  // disable watchdog
 }
 
+//*****************************************************************************************************************************
 
 void setup()
 {
   pinMode(10, OUTPUT); // Radio SS pin set as output
 
   Serial.begin(115200);
-  Serial.println("Setup");
 
   pinMode(POWER, OUTPUT);
   pinMode(LED, OUTPUT);  // pin 9 controls LED
   
   mySerial.begin(9600);
-
+  
   radio.initialize(FREQUENCY,NODEID,NETWORKID);
+  radio.encrypt(ENCRYPTKEY);
 #ifdef IS_RFM69HW
   radio.setHighPower(); //uncomment only for RFM69HW!
 #endif
-  radio.encrypt(ENCRYPTKEY);
+#ifdef FREQUENCY_EXACT
+  radio.setFrequency(FREQUENCY_EXACT); //set frequency to some custom frequency
+#endif
 
-  fadeLED();
-  Serial.println("Ready");
-  delay(10);
+  fadeLED(LED);
 }
 
+//*****************************************************************************************************************************
+// this function puts the node to sleep with watch dog timer enabled
 
 void sleep()
 {
@@ -96,6 +106,7 @@ void sleep()
   delay(1);
 }
 
+//*****************************************************************************************************************************
 
 void loop() 
 {
@@ -105,25 +116,24 @@ void loop()
   {
     readSensors();
     
-    Serial.println(dataPacket);
-    delay(5);
-    
     radio.sendWithRetry(ROOM_GATEWAYID, dataPacket, strlen(dataPacket));  // send data
     sleep();   // sleep 8 seconds before sending data to main gateway
     radio.setNetwork(GATEWAY_NETWORKID);
-    radio.sendWithRetry(GATEWAYID, dataPacket, strlen(dataPacket));
+    radio.send(GATEWAYID, dataPacket, strlen(dataPacket));
     radio.setNetwork(NETWORKID);
 
+    Serial.println(dataPacket);
+    blinkLED(LED, 3);
+    
     dataPacket[0] = (char)0; // clearing first byte of char array clears the array
-  
-    blinkLED(LED);
-
     wake_interval = 0;    // reset wake interval to 0
   }
   else
     wake_interval++;    // increment no. of times node wakes up
 }
 
+//*****************************************************************************************************************************
+// This function reads all sensors and creates a datapacket to transmit
 
 void readSensors()
 {
@@ -170,24 +180,16 @@ void readSensors()
   delay(1);
 }
 
+//*****************************************************************************************************************************
+// Fade LED
 
-
-// blink LED *****************************************
-void blinkLED(int pin)
-{
-  digitalWrite(pin, HIGH);
-  delay(5);
-  digitalWrite(pin, LOW);
-}
-
-// fade LED **********************************************************************
-void fadeLED()
+void fadeLED(int pin)
 {
   int brightness = 0;
   int fadeAmount = 5;
   for(int i=0; i<510; i=i+5)  // 255 is max analog value, 255 * 2 = 510
   {
-    analogWrite(9, brightness);  // pin 9 is LED
+    analogWrite(pin, brightness);  // pin 9 is LED
   
     // change the brightness for next time through the loop:
     brightness = brightness + fadeAmount;  // increment brightness level by 5 each time (0 is lowest, 255 is highest)
@@ -200,7 +202,18 @@ void fadeLED()
     // wait for 20-30 milliseconds to see the dimming effect
     delay(10);
   }
-  digitalWrite(9, LOW); // switch LED off at the end of fade
+  digitalWrite(pin, LOW); // switch LED off at the end of fade
 }
 
+//*****************************************************************************************************************************
+// blink LED
+
+void blinkLED(int pin, int blinkDelay)
+{
+  digitalWrite(pin, HIGH);
+  delay(blinkDelay);
+  digitalWrite(pin, LOW);
+}
+
+//*****************************************************************************************************************************
 // bruh
